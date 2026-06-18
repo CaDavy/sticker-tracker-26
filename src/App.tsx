@@ -110,7 +110,7 @@ export default function App() {
   }
 
   /**
-   * 📷 CAMERA (iPHONE SAFE)
+   * 📷 CAMERA (FIXED iPHONE SAFE)
    */
   async function startCamera() {
     try {
@@ -123,9 +123,15 @@ export default function App() {
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+
+        await new Promise<void>((resolve) => {
+          videoRef.current!.onloadedmetadata = () => resolve();
+        });
+
         await videoRef.current.play();
       }
-    } catch {
+    } catch (err) {
+      console.error(err);
       alert("Camera niet toegestaan of niet beschikbaar");
     }
   }
@@ -136,48 +142,63 @@ export default function App() {
 
   function openScanner() {
     setScannerOpen(true);
-    setTimeout(startCamera, 200);
   }
+
+  useEffect(() => {
+    if (scannerOpen) {
+      startCamera();
+    }
+  }, [scannerOpen]);
 
   function closeScanner() {
     stopCamera();
     setScannerOpen(false);
   }
 
+  /**
+   * 📸 OCR SCAN (FIXED)
+   */
   async function scanFromCamera() {
-  if (!videoRef.current) return;
+    if (!videoRef.current) return;
 
-  const canvas = document.createElement("canvas");
-  const video = videoRef.current;
+    const video = videoRef.current;
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      alert("Camera nog aan het laden...");
+      return;
+    }
 
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-  ctx.drawImage(video, 0, 0);
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
-  const dataUrl = canvas.toDataURL("image/png");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  const result = await Tesseract.recognize(dataUrl, "eng");
+    const dataUrl = canvas.toDataURL("image/png");
 
-  const text = result.data.text.toUpperCase();
+    console.log("📷 IMAGE CAPTURED:", canvas.width, canvas.height);
 
-  console.log("OCR TEXT:", text);
+    const result = await Tesseract.recognize(dataUrl, "eng");
 
-  const match = text.match(/([A-Z]{2,3})\s?-?\s?(\d{1,3})/);
+    const text = result.data.text.toUpperCase();
 
-  if (match) {
-    const country = match[1];
-    const num = Number(match[2]);
+    console.log("🧠 OCR RESULT:", text);
 
-    add(country, num);
-    closeScanner();
-  } else {
-    alert("Geen sticker gevonden. Probeer opnieuw.");
+    const match = text.match(/([A-Z]{2,3})\s?-?\s?(\d{1,3})/);
+
+    if (match) {
+      const country = match[1];
+      const num = Number(match[2]);
+
+      add(country, num);
+      closeScanner();
+    } else {
+      alert("Geen sticker gelezen — probeer dichterbij / beter licht");
+    }
   }
-}
 
   /**
    * 🎴 CARD
@@ -281,6 +302,7 @@ export default function App() {
       {/* SCANNER */}
       {scannerOpen && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center">
+
           <video
             ref={videoRef}
             autoPlay
@@ -290,11 +312,7 @@ export default function App() {
           />
 
           <button
-            onClick={() => {
-  console.log("SCAN CLICKED");
-  scanFromCamera();
-}}
-
+            onClick={scanFromCamera}
             className="mt-4 bg-blue-500 text-white px-6 py-3 rounded-full"
           >
             📸 Scan sticker
