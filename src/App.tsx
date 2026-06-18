@@ -110,7 +110,7 @@ export default function App() {
   }
 
   /**
-   * 📷 CAMERA (FIXED iPHONE SAFE)
+   * 📷 CAMERA
    */
   async function startCamera() {
     try {
@@ -123,11 +123,6 @@ export default function App() {
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-
-        await new Promise<void>((resolve) => {
-          videoRef.current!.onloadedmetadata = () => resolve();
-        });
-
         await videoRef.current.play();
       }
     } catch (err) {
@@ -142,13 +137,8 @@ export default function App() {
 
   function openScanner() {
     setScannerOpen(true);
+    setTimeout(startCamera, 300);
   }
-
-  useEffect(() => {
-    if (scannerOpen) {
-      startCamera();
-    }
-  }, [scannerOpen]);
 
   function closeScanner() {
     stopCamera();
@@ -156,7 +146,7 @@ export default function App() {
   }
 
   /**
-   * 📸 OCR SCAN (FIXED)
+   * 📸 OCR SCAN (FINAL CLEAN VERSION)
    */
   async function scanFromCamera() {
     if (!videoRef.current) return;
@@ -179,24 +169,37 @@ export default function App() {
 
     const dataUrl = canvas.toDataURL("image/png");
 
-    console.log("📷 IMAGE CAPTURED:", canvas.width, canvas.height);
-
     const result = await Tesseract.recognize(dataUrl, "eng");
 
-    const text = result.data.text.toUpperCase();
+    const raw = result.data.text.toUpperCase();
 
-    console.log("🧠 OCR RESULT:", text);
+    console.log("OCR RAW:", raw);
 
-    const match = text.match(/([A-Z]{2,3})\s?-?\s?(\d{1,3})/);
+    const cleaned = raw
+      .replace(/[^A-Z0-9\s:-]/g, " ")
+      .replace(/\s+/g, " ");
 
-    if (match) {
-      const country = match[1];
-      const num = Number(match[2]);
+    const parts = cleaned.split(/[\s:-]+/);
 
+    let country = "";
+    let num = 0;
+
+    for (const p of parts) {
+      if (p.length >= 2 && p.length <= 3 && /^[A-Z]+$/.test(p)) {
+        country = p;
+      }
+      if (/^\d{1,3}$/.test(p)) {
+        num = Number(p);
+      }
+    }
+
+    console.log("PARSED:", country, num);
+
+    if (country && num) {
       add(country, num);
       closeScanner();
     } else {
-      alert("Geen sticker gelezen — probeer dichterbij / beter licht");
+      alert("Geen sticker gelezen — OCR: " + cleaned);
     }
   }
 
