@@ -1,50 +1,42 @@
 import { useEffect, useRef, useState } from "react";
 import Tesseract from "tesseract.js";
 
-type Props = {
+interface Props {
   onClose: () => void;
   onScan: (code: string, num: number) => void;
-};
+}
 
 export default function Scanner({ onClose, onScan }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const [running, setRunning] = useState(false);
-  const [result, setResult] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    startCamera();
+    return () => stopCamera();
+  }, []);
 
   async function startCamera() {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "environment",
-      },
-      audio: false,
-    });
-
-    streamRef.current = stream;
-
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-
-      await new Promise((r) => {
-        videoRef.current!.onloadedmetadata = () => r(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
       });
 
-      await videoRef.current.play();
-    }
+      streamRef.current = stream;
 
-    setRunning(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+    } catch (e) {
+      setError("Camera niet beschikbaar");
+    }
   }
 
   function stopCamera() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
   }
-
-  useEffect(() => {
-    startCamera();
-
-    return () => stopCamera();
-  }, []);
 
   async function scan() {
     if (!videoRef.current) return;
@@ -52,19 +44,18 @@ export default function Scanner({ onClose, onScan }: Props) {
     const video = videoRef.current;
 
     const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
     ctx.drawImage(video, 0, 0);
 
-    const img = canvas.toDataURL("image/png");
+    const image = canvas.toDataURL("image/png");
 
-    const res = await Tesseract.recognize(img, "eng");
-
-    const text = res.data.text.toUpperCase();
+    const result = await Tesseract.recognize(image, "eng");
+    const text = result.data.text.toUpperCase();
 
     console.log("OCR:", text);
 
@@ -75,57 +66,41 @@ export default function Scanner({ onClose, onScan }: Props) {
     let num = 0;
 
     for (const p of parts) {
-      if (p.length >= 2 && p.length <= 3 && /^[A-Z]+$/.test(p)) {
-        code = p;
-      }
-      if (/^\d{1,3}$/.test(p)) {
-        num = Number(p);
-      }
+      if (p.match(/^[A-Z]{2,3}$/)) code = p;
+      if (p.match(/^\d{1,3}$/)) num = Number(p);
     }
 
     if (code && num) {
-      setResult(`${code} ${num}`);
       onScan(code, num);
-
-      // auto close after success
-      setTimeout(() => {
-        stopCamera();
-        onClose();
-      }, 500);
+      onClose();
     } else {
-      setResult("Niet herkend");
+      setError("Niet herkend");
     }
   }
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center">
-      
+
       <video
         ref={videoRef}
-        className="w-full max-w-sm rounded-xl"
-        autoPlay
+        className="w-full max-w-sm rounded"
         playsInline
         muted
       />
 
+      {error && <p className="text-red-500">{error}</p>}
+
       <button
         onClick={scan}
-        className="mt-4 bg-blue-500 text-white px-6 py-3 rounded-full"
+        className="mt-4 bg-blue-600 text-white px-4 py-2 rounded"
       >
-        Scan
+        SCAN
       </button>
 
-      <p className="text-white mt-2">{result}</p>
-
-      <button
-        onClick={() => {
-          stopCamera();
-          onClose();
-        }}
-        className="text-white mt-3 underline"
-      >
+      <button onClick={onClose} className="mt-2 text-white underline">
         sluiten
       </button>
+
     </div>
   );
 }
