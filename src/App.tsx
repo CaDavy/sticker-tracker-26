@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Tesseract from "tesseract.js";
 
 /**
  * 🌍 DATA
@@ -36,16 +37,10 @@ export default function App() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  /**
-   * 💾 SAVE
-   */
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
-  /**
-   * ➕ ADD
-   */
   function add(country: string, id: number) {
     if (state.lock) return;
 
@@ -73,9 +68,6 @@ export default function App() {
     });
   }
 
-  /**
-   * ➖ REMOVE
-   */
   function remove(country: string, id: number) {
     setState((prev) => {
       if (country === "SPECIALS") {
@@ -108,9 +100,6 @@ export default function App() {
     setState((p) => ({ ...p, lock: !p.lock }));
   }
 
-  /**
-   * 📷 CAMERA (iPHONE SAFE)
-   */
   async function startCamera() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -124,8 +113,8 @@ export default function App() {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
-    } catch {
-      alert("Camera niet toegestaan of niet beschikbaar");
+    } catch (err) {
+      alert("Camera niet toegestaan");
     }
   }
 
@@ -135,7 +124,7 @@ export default function App() {
 
   function openScanner() {
     setScannerOpen(true);
-    setTimeout(startCamera, 200);
+    setTimeout(startCamera, 300);
   }
 
   function closeScanner() {
@@ -143,41 +132,63 @@ export default function App() {
     setScannerOpen(false);
   }
 
-  function scanManual() {
-    const input = prompt("Sticker (bv USA-12)");
-    if (!input) return;
+  async function scanFromCamera() {
+    if (!videoRef.current) return;
 
-    const [country, num] = input.split("-");
-    add(country, Number(num));
+    const video = videoRef.current;
 
-    closeScanner();
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    ctx.drawImage(video, 0, 0);
+
+    const image = canvas.toDataURL("image/png");
+
+    const result = await Tesseract.recognize(image, "eng");
+    const text = result.data.text.toUpperCase();
+
+    console.log("OCR:", text);
+
+    const cleaned = text.replace(/[^A-Z0-9\s]/g, " ");
+    const parts = cleaned.split(" ");
+
+    let country = "";
+    let num = 0;
+
+    for (const p of parts) {
+      if (COUNTRIES.includes(p)) country = p;
+      if (/^\d{1,3}$/.test(p)) num = Number(p);
+    }
+
+    if (country && num) {
+      add(country, num);
+      closeScanner();
+    } else {
+      alert("Niet herkend: " + text);
+    }
   }
 
-  /**
-   * 🎴 CARD
-   */
   function Card({ id, label, count, color, onTap, onHold }: any) {
     let timer: any;
 
     return (
       <div
-        className={`${color} text-white p-3 rounded-2xl shadow-lg`}
+        className={`${color} text-white p-3 rounded-xl`}
         onClick={onTap}
-        onMouseDown={() => (timer = setTimeout(onHold, 500))}
+        onMouseDown={() => (timer = setTimeout(onHold, 400))}
         onMouseUp={() => clearTimeout(timer)}
-        onTouchStart={() => (timer = setTimeout(onHold, 500))}
+        onTouchStart={() => (timer = setTimeout(onHold, 400))}
         onTouchEnd={() => clearTimeout(timer)}
       >
         <div className="flex justify-between">
           <div>{label}</div>
           <div>#{id}</div>
         </div>
-
-        <div className="mt-2 text-sm opacity-80">
-          {count === 0 ? "niet verzameld" : count === 1 ? "verzameld" : "dubbel"}
-        </div>
-
-        <div className="text-xl font-bold">x{count}</div>
+        <div>x{count}</div>
       </div>
     );
   }
@@ -185,26 +196,17 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-400 via-pink-500 to-yellow-400">
 
-      {/* TABS */}
-      <div className="flex overflow-x-auto gap-2 p-2">
-        <button onClick={() => { setTab("SPECIALS"); setSelectedCountry(null); }} className="bg-black text-white px-3 py-1 rounded-full">
-          SPECIALS
-        </button>
-
+      <div className="p-2 flex gap-2 overflow-x-auto">
+        <button onClick={() => setTab("SPECIALS")}>SPECIALS</button>
         {COUNTRIES.map((c) => (
-          <button
-            key={c}
-            onClick={() => { setTab(c); setSelectedCountry(c); }}
-            className="bg-white/30 text-white px-3 py-1 rounded-full"
-          >
+          <button key={c} onClick={() => { setTab(c); setSelectedCountry(c); }}>
             {c}
           </button>
         ))}
       </div>
 
-      {/* SPECIALS */}
       {tab === "SPECIALS" && (
-        <div className="grid grid-cols-2 gap-3 p-3">
+        <div className="grid grid-cols-2 gap-2 p-2">
           {SPECIALS.map((id) => (
             <Card
               key={id}
@@ -219,15 +221,14 @@ export default function App() {
         </div>
       )}
 
-      {/* COUNTRIES */}
-      {tab !== "SPECIALS" && selectedCountry && (
-        <div className="grid grid-cols-2 gap-3 p-3">
+      {selectedCountry && tab !== "SPECIALS" && (
+        <div className="grid grid-cols-2 gap-2 p-2">
           {Array.from({ length: 20 }, (_, i) => (
             <Card
               key={i}
               id={i + 1}
               label="🏳️"
-              color="bg-blue-500"
+              color="bg-blue-600"
               count={state.countries?.[selectedCountry]?.[i + 1] || 0}
               onTap={() => add(selectedCountry, i + 1)}
               onHold={() => remove(selectedCountry, i + 1)}
@@ -236,7 +237,6 @@ export default function App() {
         </div>
       )}
 
-      {/* CAMERA BUTTON */}
       <button
         onClick={openScanner}
         className="fixed bottom-20 right-4 bg-blue-600 text-white p-4 rounded-full"
@@ -244,7 +244,6 @@ export default function App() {
         📷
       </button>
 
-      {/* LOCK */}
       <button
         onClick={toggleLock}
         className="fixed bottom-4 right-4 bg-red-500 text-white p-4 rounded-full"
@@ -252,30 +251,22 @@ export default function App() {
         {state.lock ? "🔒" : "🔓"}
       </button>
 
-      {/* SCANNER */}
       {scannerOpen && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full max-w-sm rounded-xl"
-          />
+          <video ref={videoRef} autoPlay playsInline muted className="w-full max-w-sm" />
 
           <button
-            onClick={scanManual}
-            className="mt-4 bg-blue-500 text-white px-6 py-3 rounded-full"
+            onClick={scanFromCamera}
+            className="mt-4 bg-green-500 text-white px-6 py-3 rounded"
           >
-            📸 Scan sticker
+            SCAN
           </button>
 
-          <button onClick={closeScanner} className="text-white mt-3 underline">
+          <button onClick={closeScanner} className="text-white mt-3">
             sluiten
           </button>
         </div>
       )}
-
     </div>
   );
 }
