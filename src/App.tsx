@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Tesseract from "tesseract.js";
 
 /**
  * 🌍 DATA
@@ -143,15 +144,40 @@ export default function App() {
     setScannerOpen(false);
   }
 
-  function scanManual() {
-    const input = prompt("Sticker (bv USA-12)");
-    if (!input) return;
+  async function scanFromCamera() {
+  if (!videoRef.current) return;
 
-    const [country, num] = input.split("-");
-    add(country, Number(num));
+  const canvas = document.createElement("canvas");
+  const video = videoRef.current;
 
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  ctx.drawImage(video, 0, 0);
+
+  const dataUrl = canvas.toDataURL("image/png");
+
+  const result = await Tesseract.recognize(dataUrl, "eng");
+
+  const text = result.data.text.toUpperCase();
+
+  console.log("OCR TEXT:", text);
+
+  const match = text.match(/([A-Z]{2,3})\s?-?\s?(\d{1,3})/);
+
+  if (match) {
+    const country = match[1];
+    const num = Number(match[2]);
+
+    add(country, num);
     closeScanner();
+  } else {
+    alert("Geen sticker gevonden. Probeer opnieuw.");
   }
+}
 
   /**
    * 🎴 CARD
@@ -264,7 +290,7 @@ export default function App() {
           />
 
           <button
-            onClick={scanManual}
+            onClick={scanFromCamera}
             className="mt-4 bg-blue-500 text-white px-6 py-3 rounded-full"
           >
             📸 Scan sticker
