@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Tesseract from "tesseract.js";
 
-/**
- * 🌍 DATA
- */
 const COUNTRIES = [
   "MEX","RSA","KOR","CZE","CAN","BIH","QAT","SUI","BRA","MAR",
   "HAI","SCO","USA","PAR","AUS","TUR","GER","CUW","CIV","ECU",
@@ -13,7 +10,6 @@ const COUNTRIES = [
 ];
 
 const SPECIALS = Array.from({ length: 20 }, (_, i) => i);
-
 const STORAGE_KEY = "sticker-tracker-26";
 
 type State = {
@@ -25,28 +21,21 @@ type State = {
 export default function App() {
   const [state, setState] = useState<State>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
-    return saved
-      ? JSON.parse(saved)
-      : { specials: {}, countries: {}, lock: false };
+    return saved ? JSON.parse(saved) : { specials: {}, countries: {}, lock: false };
   });
 
   const [tab, setTab] = useState("SPECIALS");
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [loadingScan, setLoadingScan] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  /**
-   * 💾 SAVE
-   */
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
-  /**
-   * ➕ ADD
-   */
   function add(country: string, id: number) {
     if (state.lock) return;
 
@@ -74,9 +63,6 @@ export default function App() {
     });
   }
 
-  /**
-   * ➖ REMOVE
-   */
   function remove(country: string, id: number) {
     setState((prev) => {
       if (country === "SPECIALS") {
@@ -109,25 +95,17 @@ export default function App() {
     setState((p) => ({ ...p, lock: !p.lock }));
   }
 
-  /**
-   * 📷 CAMERA
-   */
   async function startCamera() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: false,
-      });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" },
+      audio: false,
+    });
 
-      streamRef.current = stream;
+    streamRef.current = stream;
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Camera niet toegestaan of niet beschikbaar");
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
     }
   }
 
@@ -145,67 +123,50 @@ export default function App() {
     setScannerOpen(false);
   }
 
-  /**
-   * 📸 OCR SCAN (FINAL CLEAN VERSION)
-   */
   async function scanFromCamera() {
     if (!videoRef.current) return;
 
+    setLoadingScan(true);
+
     const video = videoRef.current;
 
-    if (video.videoWidth === 0 || video.videoHeight === 0) {
-      alert("Camera nog aan het laden...");
-      return;
-    }
-
     const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0);
 
     const dataUrl = canvas.toDataURL("image/png");
 
     const result = await Tesseract.recognize(dataUrl, "eng");
+    const text = result.data.text.toUpperCase();
 
-    const raw = result.data.text.toUpperCase();
+    console.log("OCR:", text);
 
-    console.log("OCR RAW:", raw);
-
-    const cleaned = raw
-      .replace(/[^A-Z0-9\s:-]/g, " ")
-      .replace(/\s+/g, " ");
-
-    const parts = cleaned.split(/[\s:-]+/);
+    const cleaned = text.replace(/[^A-Z0-9\s]/g, " ");
+    const parts = cleaned.split(/\s+/);
 
     let country = "";
-    let num = 0;
+    let number = 0;
 
     for (const p of parts) {
-      if (p.length >= 2 && p.length <= 3 && /^[A-Z]+$/.test(p)) {
-        country = p;
-      }
-      if (/^\d{1,3}$/.test(p)) {
-        num = Number(p);
-      }
+      if (COUNTRIES.includes(p)) country = p;
+      if (/^\d{1,3}$/.test(p)) number = Number(p);
     }
 
-    console.log("PARSED:", country, num);
-
-    if (country && num) {
-      add(country, num);
+    if (country && number) {
+      add(country, number);
       closeScanner();
     } else {
-      alert("Geen sticker gelezen — OCR: " + cleaned);
+      alert("Sticker niet herkend. Probeer beter licht / dichterbij.");
     }
+
+    setLoadingScan(false);
   }
 
-  /**
-   * 🎴 CARD
-   */
   function Card({ id, label, count, color, onTap, onHold }: any) {
     let timer: any;
 
@@ -223,11 +184,7 @@ export default function App() {
           <div>#{id}</div>
         </div>
 
-        <div className="mt-2 text-sm opacity-80">
-          {count === 0 ? "niet verzameld" : count === 1 ? "verzameld" : "dubbel"}
-        </div>
-
-        <div className="text-xl font-bold">x{count}</div>
+        <div className="text-xl font-bold mt-2">x{count}</div>
       </div>
     );
   }
@@ -237,16 +194,12 @@ export default function App() {
 
       {/* TABS */}
       <div className="flex overflow-x-auto gap-2 p-2">
-        <button onClick={() => { setTab("SPECIALS"); setSelectedCountry(null); }} className="bg-black text-white px-3 py-1 rounded-full">
+        <button onClick={() => { setTab("SPECIALS"); setSelectedCountry(null); }}>
           SPECIALS
         </button>
 
         {COUNTRIES.map((c) => (
-          <button
-            key={c}
-            onClick={() => { setTab(c); setSelectedCountry(c); }}
-            className="bg-white/30 text-white px-3 py-1 rounded-full"
-          >
+          <button key={c} onClick={() => { setTab(c); setSelectedCountry(c); }}>
             {c}
           </button>
         ))}
@@ -286,19 +239,13 @@ export default function App() {
         </div>
       )}
 
-      {/* CAMERA BUTTON */}
-      <button
-        onClick={openScanner}
-        className="fixed bottom-20 right-4 bg-blue-600 text-white p-4 rounded-full"
-      >
+      {/* CAMERA */}
+      <button onClick={openScanner} className="fixed bottom-20 right-4 bg-blue-600 p-4 rounded-full text-white">
         📷
       </button>
 
       {/* LOCK */}
-      <button
-        onClick={toggleLock}
-        className="fixed bottom-4 right-4 bg-red-500 text-white p-4 rounded-full"
-      >
+      <button onClick={toggleLock} className="fixed bottom-4 right-4 bg-red-500 p-4 rounded-full text-white">
         {state.lock ? "🔒" : "🔓"}
       </button>
 
@@ -306,19 +253,14 @@ export default function App() {
       {scannerOpen && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center">
 
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full max-w-sm rounded-xl"
-          />
+          <video ref={videoRef} autoPlay playsInline muted className="w-full max-w-sm rounded-xl" />
 
           <button
             onClick={scanFromCamera}
+            disabled={loadingScan}
             className="mt-4 bg-blue-500 text-white px-6 py-3 rounded-full"
           >
-            📸 Scan sticker
+            {loadingScan ? "Scannen..." : "📸 Scan sticker"}
           </button>
 
           <button onClick={closeScanner} className="text-white mt-3 underline">
@@ -326,7 +268,6 @@ export default function App() {
           </button>
         </div>
       )}
-
     </div>
   );
 }
