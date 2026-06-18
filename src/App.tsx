@@ -290,7 +290,11 @@ export default function App() {
           />
 
           <button
-            onClick={scanFromCamera}
+            onClick={() => {
+  console.log("SCAN CLICKED");
+  scanFromCamera();
+}}
+
             className="mt-4 bg-blue-500 text-white px-6 py-3 rounded-full"
           >
             📸 Scan sticker
